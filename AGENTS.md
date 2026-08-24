@@ -32,16 +32,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## 规范文档
 
 ### 前端开发规范
-@.github/rules/frontend.md
+@.claude/docs/rules/frontend.md
 
 ### 代码审查规范
-@.github/rules/reviewer.md
+@.claude/docs/rules/reviewer.md
 
 ### 基础命令参考
-@.github/commands/basic.md
+@.claude/docs/guides/basic.md
 
 ### Feature 开发流程
-@.github/commands/feature.md
+@.claude/docs/guides/feature.md
 
 ### React 开发技巧
-@.github/skills/react.md
+@.claude/docs/techniques/react.md
