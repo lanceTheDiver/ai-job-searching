@@ -105,3 +105,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ### React 开发技巧
 
 @.claude/docs/techniques/react.md
+
+### Git 提交与推送规范
+
+@.claude/docs/guides/commit.md
