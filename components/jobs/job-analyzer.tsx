@@ -1,10 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, Check, FileText, RotateCcw } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import {
+  ArrowRight,
+  Check,
+  FileText,
+  LoaderCircle,
+  RotateCcw,
+  Upload,
+} from "lucide-react";
 
 import { JobAnalysisResult } from "@/components/jobs/job-analysis-result";
-import { requestJobAnalysis } from "@/lib/services/job-service";
+import {
+  requestJobAnalysis,
+  requestResumeParsing,
+} from "@/lib/services/job-service";
 import type { JobAnalysis } from "@/schemas/job";
 
 const exampleJob = `Senior Frontend Engineer
@@ -33,6 +50,8 @@ export function JobAnalyzer() {
   const [analysis, setAnalysis] = useState<JobAnalysis | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isResumeUploading, setIsResumeUploading] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState("");
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,11 +75,35 @@ export function JobAnalyzer() {
     }
   }
 
+  async function handleResumeUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setError("");
+    setIsResumeUploading(true);
+    try {
+      const parsedResume = await requestResumeParsing(file);
+      setResumeText(parsedResume.text);
+      setResumeFileName(
+        `${parsedResume.fileName} · ${parsedResume.pageCount} 页`,
+      );
+      setAnalysis(null);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : "PDF 简历解析失败",
+      );
+    } finally {
+      setIsResumeUploading(false);
+    }
+  }
+
   function resetForm() {
     setJobDescription("");
     setResumeText("");
     setAnalysis(null);
     setError("");
+    setResumeFileName("");
   }
 
   const isReady =
@@ -70,7 +113,7 @@ export function JobAnalyzer() {
     <form
       onSubmit={handleSubmit}
       className="grid items-start gap-5 xl:grid-cols-[minmax(22rem,0.72fr)_minmax(32rem,1.28fr)]"
-      aria-busy={isLoading}
+      aria-busy={isLoading || isResumeUploading}
     >
       <section className="overflow-hidden rounded-[22px] bg-white shadow-[0_18px_55px_rgba(23,32,51,0.055)] xl:sticky xl:top-5">
         <div className="flex items-center justify-between border-b border-[#172033]/8 px-5 py-4 sm:px-6">
@@ -90,6 +133,7 @@ export function JobAnalyzer() {
         </div>
 
         <TextInput
+          id="job-description"
           label="职位描述"
           code="JD"
           value={jobDescription}
@@ -97,11 +141,39 @@ export function JobAnalyzer() {
           placeholder="粘贴完整职位描述，包括职责、要求和加分项…"
         />
         <TextInput
+          id="resume-text"
           label="候选人简历"
           code="CV"
           value={resumeText}
           onChange={setResumeText}
           placeholder="粘贴纯文本简历，AI 会逐项寻找证据…"
+          action={
+            <div className="flex min-w-0 items-center gap-2">
+              {resumeFileName && !isResumeUploading && (
+                <span
+                  className="max-w-32 truncate text-[9px] text-[#172033]/35"
+                  title={resumeFileName}
+                >
+                  {resumeFileName}
+                </span>
+              )}
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[#edf3ef] px-2 py-1.5 text-[10px] font-medium text-[#1f7565] transition-colors hover:bg-[#e1ece6] focus-within:ring-3 focus-within:ring-[#1f8a70]/18">
+                {isResumeUploading ? (
+                  <LoaderCircle className="size-3 animate-spin" />
+                ) : (
+                  <Upload className="size-3" />
+                )}
+                {isResumeUploading ? "正在解析" : "上传 PDF"}
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="sr-only"
+                  disabled={isResumeUploading || isLoading}
+                  onChange={handleResumeUpload}
+                />
+              </label>
+            </div>
+          }
         />
 
         <div className="border-t border-[#172033]/8 bg-[#fafbf9] px-5 py-4 sm:px-6">
@@ -126,7 +198,7 @@ export function JobAnalyzer() {
             </span>
             <button
               type="submit"
-              disabled={isLoading || !isReady}
+              disabled={isLoading || isResumeUploading || !isReady}
               className="flex h-10 items-center gap-3 rounded-[10px] bg-[#172033] px-4 text-xs font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#24304a] hover:shadow-[0_8px_22px_rgba(23,32,51,0.18)] focus-visible:ring-4 focus-visible:ring-[#1f8a70]/18 focus-visible:outline-none active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
               {isLoading ? "正在分析" : "生成匹配报告"}
@@ -158,38 +230,49 @@ export function JobAnalyzer() {
 }
 
 type TextInputProps = {
+  id: string;
   label: string;
   code: string;
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
+  action?: ReactNode;
 };
 
 function TextInput({
+  id,
   label,
   code,
   value,
   placeholder,
   onChange,
+  action,
 }: TextInputProps) {
   return (
-    <label className="block border-b border-[#172033]/8 px-5 py-5 last:border-b-0 sm:px-6">
+    <div className="block border-b border-[#172033]/8 px-5 py-5 last:border-b-0 sm:px-6">
       <span className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-xs font-semibold">
+        <label
+          htmlFor={id}
+          className="flex items-center gap-2 text-xs font-semibold"
+        >
           <FileText className="size-3.5 text-[#1f7565]" />
           {label}
-        </span>
-        <span className="font-mono text-[9px] text-[#172033]/30">
-          {code} / {value.length.toLocaleString()}
+        </label>
+        <span className="flex items-center gap-2">
+          {action}
+          <span className="font-mono text-[9px] text-[#172033]/30">
+            {code} / {value.length.toLocaleString()}
+          </span>
         </span>
       </span>
       <textarea
+        id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className="mt-3 min-h-48 w-full resize-y bg-transparent text-[13px] leading-6 text-[#172033]/72 outline-none placeholder:text-[#172033]/24 sm:min-h-52"
       />
-    </label>
+    </div>
   );
 }
 
