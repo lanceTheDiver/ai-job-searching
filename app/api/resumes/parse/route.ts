@@ -73,6 +73,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "文件不是有效的 PDF" }, { status: 415 });
   }
 
+  // pdf-parse 会把输入缓冲区转交给 Worker，解析完成后原缓冲区可能已被分离。
+  // 提前复制一份，确保后续保存的始终是完整的原始 PDF。
+  const dataToStore = data.slice();
   const parser = new PDFParse({ data });
   try {
     const result = await parser.getText({ pageJoiner: "" });
@@ -93,7 +96,7 @@ export async function POST(request: Request) {
 
     let storedFile;
     try {
-      storedFile = await saveResumePdf(data, file.name);
+      storedFile = await saveResumePdf(dataToStore, file.name);
     } catch (error) {
       console.error("PDF 简历保存失败", error);
       return Response.json(

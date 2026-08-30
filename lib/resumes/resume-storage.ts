@@ -1,7 +1,7 @@
 "server-only";
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 const RESUME_ID_PATTERN =
@@ -44,6 +44,7 @@ export async function saveResumePdf(
 ): Promise<StoredResumeReference> {
   const id = randomUUID();
   const directory = join(STORAGE_ROOT, id);
+  const temporaryDirectory = join(STORAGE_ROOT, `.upload-${id}`);
   const storedFileName = sanitizePdfFileName(originalFileName);
   const uploadedAt = new Date().toISOString();
   const reference: StoredResumeReference = {
@@ -54,16 +55,25 @@ export async function saveResumePdf(
   };
   const metadata: StoredResumeMetadata = { ...reference, storedFileName };
 
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  await writeFile(join(directory, storedFileName), data, {
-    flag: "wx",
-    mode: 0o600,
-  });
-  await writeFile(
-    join(directory, "metadata.json"),
-    JSON.stringify(metadata, null, 2),
-    { flag: "wx", mode: 0o600 },
-  );
+  await mkdir(STORAGE_ROOT, { recursive: true, mode: 0o700 });
+  await mkdir(temporaryDirectory, { mode: 0o700 });
+  try {
+    await writeFile(join(temporaryDirectory, storedFileName), data, {
+      flag: "wx",
+      mode: 0o600,
+    });
+    await writeFile(
+      join(temporaryDirectory, "metadata.json"),
+      JSON.stringify(metadata, null, 2),
+      { flag: "wx", mode: 0o600 },
+    );
+    await rename(temporaryDirectory, directory);
+  } catch (error) {
+    await rm(temporaryDirectory, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
+    throw error;
+  }
 
   return reference;
 }
