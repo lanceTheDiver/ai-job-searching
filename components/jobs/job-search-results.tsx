@@ -1,5 +1,6 @@
 import { ArrowUpRight, Check, CircleAlert, Sparkles, X } from "lucide-react";
 
+import { ApplicationAssistant } from "@/components/applications/application-assistant";
 import type { JobMatch, JobSearchNotice } from "@/schemas/job-search";
 
 export function JobSearchNotices({ notices }: { notices: JobSearchNotice[] }) {
@@ -37,7 +38,7 @@ export function JobSearchResults({
   results: JobMatch[];
   isSearching: boolean;
 }) {
-  if (isSearching) {
+  if (isSearching && results.length === 0) {
     return (
       <div className="grid gap-3" aria-live="polite">
         {Array.from({ length: 3 }, (_, index) => (
@@ -59,7 +60,8 @@ export function JobSearchResults({
           匹配结果
         </h2>
         <span className="font-mono text-[10px] text-[#172033]/38">
-          {results.length} JOBS / SORTED BY FIT
+          {results.length} JOBS /{" "}
+          {isSearching ? "STILL SEARCHING" : "SORTED BY FIT"}
         </span>
       </div>
       <div className="grid gap-3">
@@ -120,6 +122,7 @@ export function JobSearchResults({
                   </span>
                 ))}
               </div>
+              <ApplicationAssistant job={job} />
             </div>
             <a
               href={job.url}
