@@ -1,16 +1,16 @@
 import type {
-  LinkedInJobMatch,
+  JobMatch,
+  JobSearchNotice,
   LinkedInJobSearchRequest,
 } from "@/schemas/job-search";
 
 type SearchJobsResponse = {
-  data?: LinkedInJobMatch[];
+  data?: JobMatch[];
+  notices?: JobSearchNotice[];
   error?: string;
 };
 
-export async function requestLinkedInJobSearch(
-  input: LinkedInJobSearchRequest,
-) {
+export async function requestJobSearch(input: LinkedInJobSearchRequest) {
   const response = await fetch("/api/jobs/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -20,5 +20,8 @@ export async function requestLinkedInJobSearch(
   if (!response.ok || !payload.data) {
     throw new Error(payload.error ?? "岗位搜索请求失败");
   }
-  return payload.data;
+  return {
+    results: payload.data,
+    notices: payload.notices ?? [],
+  };
 }

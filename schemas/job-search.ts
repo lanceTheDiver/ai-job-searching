@@ -3,6 +3,9 @@ import { z } from "zod";
 export const workplaceSchema = z.enum(["any", "remote", "hybrid", "onsite"]);
 export type Workplace = z.infer<typeof workplaceSchema>;
 
+export const jobSourceSchema = z.enum(["linkedin", "boss"]);
+export type JobSource = z.infer<typeof jobSourceSchema>;
+
 export const linkedInJobSearchRequestSchema = z.object({
   resumeText: z
     .string()
@@ -15,21 +18,37 @@ export const linkedInJobSearchRequestSchema = z.object({
 export const jobSearchCriteriaSchema = z
   .object({
     keywords: z.string().trim().min(2).max(100),
+    bossKeywords: z.string().trim().min(2).max(100),
     location: z.string().trim().min(2).max(100).nullable(),
+    bossCity: z.string().trim().min(2).max(20),
   })
   .strict();
 
 export const linkedInJobMatchSchema = z.object({
   id: z.string(),
+  source: jobSourceSchema,
   title: z.string(),
   company: z.string().nullable(),
   location: z.string().nullable(),
   postedAt: z.string().nullable(),
+  salary: z.string().nullable(),
   url: z.url(),
   matchScore: z.number().int().min(0).max(100),
   summary: z.string(),
   matchedSkills: z.array(z.string()),
   missingSkills: z.array(z.string()),
+});
+
+export const jobSearchNoticeSchema = z.object({
+  source: jobSourceSchema,
+  code: z.enum([
+    "AUTH_REQUIRED",
+    "BROWSER_UNAVAILABLE",
+    "SOURCE_UNAVAILABLE",
+    "EMPTY_RESULT",
+  ]),
+  message: z.string(),
+  actionUrl: z.url().optional(),
 });
 
 export const jobRankingSchema = z
@@ -52,5 +71,7 @@ export type LinkedInJobSearchRequest = z.infer<
   typeof linkedInJobSearchRequestSchema
 >;
 export type JobSearchCriteria = z.infer<typeof jobSearchCriteriaSchema>;
-export type LinkedInJobMatch = z.infer<typeof linkedInJobMatchSchema>;
+export type JobMatch = z.infer<typeof linkedInJobMatchSchema>;
+export type LinkedInJobMatch = JobMatch;
+export type JobSearchNotice = z.infer<typeof jobSearchNoticeSchema>;
 export type JobRanking = z.infer<typeof jobRankingSchema>;

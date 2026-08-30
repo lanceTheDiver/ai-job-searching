@@ -1,20 +1,13 @@
+import type { SearchableJob } from "@/lib/jobs/types";
 import type { Workplace } from "@/schemas/job-search";
 
 const SEARCH_URL =
   "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search";
 const DETAIL_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting";
 const USER_AGENT = "Mozilla/5.0 (compatible; ApplyPilot/1.0; personal-use)";
-const MAX_RESULTS = 5;
+const MAX_RESULTS = 10;
 
-export type LinkedInJob = {
-  id: string;
-  title: string;
-  company: string | null;
-  location: string | null;
-  postedAt: string | null;
-  url: string;
-  description: string;
-};
+export type LinkedInJob = SearchableJob;
 
 type LinkedInJobSearchCriteria = {
   keywords: string;
@@ -154,6 +147,7 @@ function parseSearchCards(html: string) {
 
     cards.push({
       id,
+      source: "linkedin",
       title,
       company: extractElementByClass(item, "h4", "base-search-card__subtitle"),
       location: extractElementByClass(
@@ -162,6 +156,7 @@ function parseSearchCards(html: string) {
         "job-search-card__location",
       ),
       postedAt: date ?? null,
+      salary: null,
       url: decodeHtml(href.split("?")[0]),
     });
   }

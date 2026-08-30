@@ -1,3 +1,4 @@
 allowBuilds:
+  "@jackwener/opencli": true
   sharp: false
   unrs-resolver: false

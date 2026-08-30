@@ -1,19 +1,17 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import {
-  ArrowUpRight,
-  Check,
-  LoaderCircle,
-  Search,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { LoaderCircle, LogIn, Search } from "lucide-react";
 
+import {
+  JobSearchNotices,
+  JobSearchResults,
+} from "@/components/jobs/job-search-results";
 import { ResumeInput } from "@/components/resumes/resume-input";
-import { requestLinkedInJobSearch } from "@/lib/services/job-search-service";
+import { requestJobSearch } from "@/lib/services/job-search-service";
 import type {
-  LinkedInJobMatch,
+  JobMatch,
+  JobSearchNotice,
   LinkedInJobSearchRequest,
 } from "@/schemas/job-search";
 import { useCandidateProfileStore } from "@/stores/candidate-profile-store";
@@ -29,7 +27,8 @@ export function JobSearchWorkspace() {
   const resumeText = useCandidateProfileStore((state) => state.resumeText);
   const [workplace, setWorkplace] =
     useState<LinkedInJobSearchRequest["workplace"]>("any");
-  const [results, setResults] = useState<LinkedInJobMatch[]>([]);
+  const [results, setResults] = useState<JobMatch[]>([]);
+  const [notices, setNotices] = useState<JobSearchNotice[]>([]);
   const [error, setError] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isResumeUploading, setIsResumeUploading] = useState(false);
@@ -39,16 +38,15 @@ export function JobSearchWorkspace() {
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNotices([]);
     setIsSearching(true);
     try {
-      setResults(
-        await requestLinkedInJobSearch({
-          resumeText,
-          workplace,
-        }),
-      );
+      const response = await requestJobSearch({ resumeText, workplace });
+      setResults(response.results);
+      setNotices(response.notices);
     } catch (caughtError) {
       setResults([]);
+      setNotices([]);
       setError(
         caughtError instanceof Error ? caughtError.message : "岗位搜索失败",
       );
@@ -78,21 +76,21 @@ export function JobSearchWorkspace() {
         />
       </section>
 
-      <section aria-labelledby="linkedin-search-title">
+      <section aria-labelledby="job-provider-search-title">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
             <p className="font-mono text-[10px] tracking-[0.14em] text-[#1f7565] uppercase">
-              Source 01 / LinkedIn
+              Sources / LinkedIn + Boss 直聘
             </p>
             <h2
-              id="linkedin-search-title"
+              id="job-provider-search-title"
               className="mt-2 text-2xl font-semibold tracking-[-0.04em]"
             >
               搜索并匹配岗位
             </h2>
           </div>
           <p className="hidden max-w-sm text-right text-[11px] leading-5 text-[#172033]/38 sm:block">
-            调用公开职位页面，每次最多分析 5 个结果
+            每个平台最多保留 10 个岗位并统一分析
             <br />
             仅供个人低频使用
           </p>
@@ -143,6 +141,21 @@ export function JobSearchWorkspace() {
               {isSearching ? "搜索并匹配中" : "搜索岗位"}
             </button>
           </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/8 pt-4 text-[10px] leading-5 text-white/45">
+            <span className="flex items-center gap-2">
+              <LogIn className="size-3.5 text-[#9ce0cf]" />
+              搜索 Boss 直聘前，请先在 Chrome 登录并启用 OpenCLI Browser
+              Bridge。
+            </span>
+            <a
+              href="https://www.zhipin.com/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[#9ce0cf] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ce0cf]/30"
+            >
+              前往 Boss 直聘登录
+            </a>
+          </div>
         </form>
       </section>
 
@@ -155,106 +168,9 @@ export function JobSearchWorkspace() {
         </div>
       )}
 
+      {notices.length > 0 && <JobSearchNotices notices={notices} />}
+
       <JobSearchResults results={results} isSearching={isSearching} />
     </div>
-  );
-}
-
-function JobSearchResults({
-  results,
-  isSearching,
-}: {
-  results: LinkedInJobMatch[];
-  isSearching: boolean;
-}) {
-  if (isSearching) {
-    return (
-      <div className="grid gap-3" aria-live="polite">
-        {Array.from({ length: 3 }, (_, index) => (
-          <div
-            key={index}
-            className="h-44 animate-pulse rounded-[18px] bg-white/70"
-          />
-        ))}
-      </div>
-    );
-  }
-
-  if (results.length === 0) return null;
-
-  return (
-    <section aria-labelledby="search-results-title">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 id="search-results-title" className="text-sm font-semibold">
-          匹配结果
-        </h2>
-        <span className="font-mono text-[10px] text-[#172033]/38">
-          {results.length} JOBS / SORTED BY FIT
-        </span>
-      </div>
-      <div className="grid gap-3">
-        {results.map((job, index) => (
-          <article
-            key={job.id}
-            className="grid gap-5 rounded-[18px] bg-white p-5 shadow-[0_12px_38px_rgba(23,32,51,0.04)] sm:grid-cols-[5rem_1fr_auto] sm:items-start"
-          >
-            <div>
-              <p className="font-mono text-[9px] text-[#172033]/30">
-                #{String(index + 1).padStart(2, "0")}
-              </p>
-              <p className="mt-2 text-3xl font-semibold tracking-[-0.06em] text-[#1f7565]">
-                {job.matchScore}
-                <span className="ml-1 text-xs tracking-normal text-[#172033]/30">
-                  %
-                </span>
-              </p>
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-lg font-semibold tracking-[-0.03em]">
-                {job.title}
-              </h3>
-              <p className="mt-1 text-xs text-[#172033]/45">
-                {[job.company, job.location, job.postedAt]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-              <p className="mt-3 text-xs leading-6 text-[#172033]/62">
-                {job.summary}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {job.matchedSkills.map((skill) => (
-                  <span
-                    key={`match-${skill}`}
-                    className="flex items-center gap-1 rounded-full bg-[#e8f3ef] px-2.5 py-1 text-[10px] text-[#1f7565]"
-                  >
-                    <Check className="size-2.5" /> {skill}
-                  </span>
-                ))}
-                {job.missingSkills.map((skill) => (
-                  <span
-                    key={`gap-${skill}`}
-                    className="flex items-center gap-1 rounded-full bg-[#f4ece9] px-2.5 py-1 text-[10px] text-[#9d5148]"
-                  >
-                    <X className="size-2.5" /> {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <a
-              href={job.url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-center gap-2 rounded-[9px] border border-[#172033]/10 px-3 py-2 text-[11px] font-medium transition-colors hover:border-[#1f7565]/30 hover:bg-[#edf3ef] hover:text-[#1f7565] focus-visible:ring-3 focus-visible:ring-[#1f8a70]/18 focus-visible:outline-none"
-            >
-              查看岗位 <ArrowUpRight className="size-3" />
-            </a>
-          </article>
-        ))}
-      </div>
-      <p className="mt-4 flex items-center gap-2 text-[10px] text-[#172033]/34">
-        <Sparkles className="size-3 text-[#1f7565]" />
-        匹配度由 AI 根据当前简历与公开职位描述生成，仅作为投递决策参考。
-      </p>
-    </section>
   );
 }

@@ -19,8 +19,8 @@ export default function JobSearchPage() {
             </h1>
           </div>
           <p className="text-sm leading-7 text-[#172033]/52">
-            AI 会从候选人简历识别适合的岗位方向和搜索范围，再读取 LinkedIn
-            公开职位要求，逐项比较并按匹配度排序。
+            AI 会从候选人简历识别适合的岗位方向和搜索范围，再读取 LinkedIn 与
+            Boss 直聘岗位要求，逐项比较并按匹配度排序。
           </p>
         </header>
         <JobSearchWorkspace />

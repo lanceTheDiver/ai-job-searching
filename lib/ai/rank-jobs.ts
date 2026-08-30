@@ -1,4 +1,4 @@
-import type { LinkedInJob } from "@/lib/linkedin/search-jobs";
+import type { SearchableJob } from "@/lib/jobs/types";
 import {
   OmniRouteError,
   requestOmniRouteStructuredOutput,
@@ -9,17 +9,24 @@ export { OmniRouteError as JobRankingError };
 
 export async function rankJobs(
   resumeText: string,
-  jobs: LinkedInJob[],
+  jobs: SearchableJob[],
 ): Promise<JobRanking> {
-  const jobPayload = jobs.map((job) => ({
-    id: job.id,
-    title: job.title,
-    company: job.company,
-    location: job.location,
-    description: job.description || "职位详情未能读取，仅根据职位标题判断",
-  }));
+  const originalIdByRankingId = new Map<string, string>();
+  const jobPayload = jobs.map((job, index) => {
+    const rankingId = `job_${index + 1}`;
+    originalIdByRankingId.set(rankingId, job.id);
+    return {
+      id: rankingId,
+      source: job.source,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      salary: job.salary,
+      description: job.description || "职位详情未能读取，仅根据职位标题判断",
+    };
+  });
 
-  return requestOmniRouteStructuredOutput({
+  const ranking = await requestOmniRouteStructuredOutput({
     schema: jobRankingSchema,
     schemaName: "job_ranking",
     instructions:
@@ -28,4 +35,11 @@ export async function rankJobs(
     operationName: "匹配",
     resultName: "岗位匹配结果",
   });
+
+  return {
+    jobs: ranking.jobs.flatMap((job) => {
+      const originalId = originalIdByRankingId.get(job.id);
+      return originalId ? [{ ...job, id: originalId }] : [];
+    }),
+  };
 }
