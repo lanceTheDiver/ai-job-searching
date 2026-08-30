@@ -4,37 +4,22 @@ import {
   useEffect,
   useRef,
   useState,
-  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
-import {
-  ArrowRight,
-  Check,
-  FileText,
-  LoaderCircle,
-  RotateCcw,
-  Upload,
-} from "lucide-react";
+import { ArrowRight, Check, FileText, RotateCcw } from "lucide-react";
 
 import { JobAnalysisResult } from "@/components/jobs/job-analysis-result";
-import {
-  requestJobAnalysis,
-  requestResumeParsing,
-} from "@/lib/services/job-service";
+import { ResumeInput } from "@/components/resumes/resume-input";
+import { requestJobAnalysis } from "@/lib/services/job-service";
 import type { JobAnalysis } from "@/schemas/job";
+import { useCandidateProfileStore } from "@/stores/candidate-profile-store";
 
 const exampleJob = `Senior Frontend Engineer
 
 我们正在寻找一名高级前端工程师，负责使用 React、TypeScript 和 Next.js 构建面向全球用户的产品。你将与设计师和后端工程师合作，推动从需求拆解到上线监控的完整交付。
 
 要求：3 年以上前端经验；熟悉 React、TypeScript、Next.js App Router；有测试、性能优化和无障碍经验；能够使用英文进行技术沟通。熟悉 AI SDK、LLM 产品或结构化输出者优先。`;
-
-const exampleResume = `Lance｜Frontend Engineer
-
-4 年 Web 开发经验，主要技术栈为 React、TypeScript、Next.js 与 Tailwind CSS。负责过两个 SaaS 产品的前端架构和性能优化，将首屏加载时间降低 35%。与产品、设计和后端团队协作完成需求拆解、开发与上线。
-
-近期独立学习 LLM 应用工程，使用 Next.js Route Handler、OpenAI API 和 Zod 开发结构化内容分析工具。熟悉 Vitest 和 Playwright，能够阅读英文技术文档并参与英文会议。`;
 
 const pipeline = [
   ["01", "Next.js", "收集输入"],
@@ -46,12 +31,12 @@ const pipeline = [
 
 export function JobAnalyzer() {
   const [jobDescription, setJobDescription] = useState(exampleJob);
-  const [resumeText, setResumeText] = useState(exampleResume);
+  const resumeText = useCandidateProfileStore((state) => state.resumeText);
+  const clearResume = useCandidateProfileStore((state) => state.clearResume);
   const [analysis, setAnalysis] = useState<JobAnalysis | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isResumeUploading, setIsResumeUploading] = useState(false);
-  const [resumeFileName, setResumeFileName] = useState("");
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,35 +60,11 @@ export function JobAnalyzer() {
     }
   }
 
-  async function handleResumeUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    setError("");
-    setIsResumeUploading(true);
-    try {
-      const parsedResume = await requestResumeParsing(file);
-      setResumeText(parsedResume.text);
-      setResumeFileName(
-        `${parsedResume.fileName} · ${parsedResume.pageCount} 页`,
-      );
-      setAnalysis(null);
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error ? caughtError.message : "PDF 简历解析失败",
-      );
-    } finally {
-      setIsResumeUploading(false);
-    }
-  }
-
   function resetForm() {
     setJobDescription("");
-    setResumeText("");
+    clearResume();
     setAnalysis(null);
     setError("");
-    setResumeFileName("");
   }
 
   const isReady =
@@ -140,40 +101,10 @@ export function JobAnalyzer() {
           onChange={setJobDescription}
           placeholder="粘贴完整职位描述，包括职责、要求和加分项…"
         />
-        <TextInput
-          id="resume-text"
-          label="候选人简历"
-          code="CV"
-          value={resumeText}
-          onChange={setResumeText}
-          placeholder="粘贴纯文本简历，AI 会逐项寻找证据…"
-          action={
-            <div className="flex min-w-0 items-center gap-2">
-              {resumeFileName && !isResumeUploading && (
-                <span
-                  className="max-w-32 truncate text-[9px] text-[#172033]/35"
-                  title={resumeFileName}
-                >
-                  {resumeFileName}
-                </span>
-              )}
-              <label className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[#edf3ef] px-2 py-1.5 text-[10px] font-medium text-[#1f7565] transition-colors hover:bg-[#e1ece6] focus-within:ring-3 focus-within:ring-[#1f8a70]/18">
-                {isResumeUploading ? (
-                  <LoaderCircle className="size-3 animate-spin" />
-                ) : (
-                  <Upload className="size-3" />
-                )}
-                {isResumeUploading ? "正在解析" : "上传 PDF"}
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  className="sr-only"
-                  disabled={isResumeUploading || isLoading}
-                  onChange={handleResumeUpload}
-                />
-              </label>
-            </div>
-          }
+        <ResumeInput
+          disabled={isLoading}
+          onError={setError}
+          onUploadingChange={setIsResumeUploading}
         />
 
         <div className="border-t border-[#172033]/8 bg-[#fafbf9] px-5 py-4 sm:px-6">
