@@ -10,8 +10,19 @@ export const DEFAULT_RESUME_TEXT = `Lance｜Frontend Engineer
 type CandidateProfileState = {
   resumeText: string;
   resumeFileName: string;
+  resumeFileId: string;
+  resumeFileSize: number;
+  resumeUploadedAt: string;
   setResumeText: (resumeText: string) => void;
-  setParsedResume: (resumeText: string, resumeFileName: string) => void;
+  setParsedResume: (
+    resumeText: string,
+    file: {
+      id: string;
+      name: string;
+      size: number;
+      uploadedAt: string;
+    },
+  ) => void;
   clearResume: () => void;
 };
 
@@ -20,17 +31,42 @@ export const useCandidateProfileStore = create<CandidateProfileState>()(
     (set) => ({
       resumeText: DEFAULT_RESUME_TEXT,
       resumeFileName: "",
+      resumeFileId: "",
+      resumeFileSize: 0,
+      resumeUploadedAt: "",
       setResumeText: (resumeText) => set({ resumeText }),
-      setParsedResume: (resumeText, resumeFileName) =>
-        set({ resumeText, resumeFileName }),
-      clearResume: () => set({ resumeText: "", resumeFileName: "" }),
+      setParsedResume: (resumeText, file) =>
+        set({
+          resumeText,
+          resumeFileName: file.name,
+          resumeFileId: file.id,
+          resumeFileSize: file.size,
+          resumeUploadedAt: file.uploadedAt,
+        }),
+      clearResume: () =>
+        set({
+          resumeText: "",
+          resumeFileName: "",
+          resumeFileId: "",
+          resumeFileSize: 0,
+          resumeUploadedAt: "",
+        }),
     }),
     {
       name: "apply-pilot-candidate-profile",
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ resumeText, resumeFileName }) => ({
+      partialize: ({
         resumeText,
         resumeFileName,
+        resumeFileId,
+        resumeFileSize,
+        resumeUploadedAt,
+      }) => ({
+        resumeText,
+        resumeFileName,
+        resumeFileId,
+        resumeFileSize,
+        resumeUploadedAt,
       }),
     },
   ),

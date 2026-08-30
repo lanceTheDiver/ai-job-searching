@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ChangeEvent } from "react";
-import { FileText, LoaderCircle, Upload } from "lucide-react";
+import { FileCheck2, FileText, LoaderCircle, Upload } from "lucide-react";
 
 import { requestResumeParsing } from "@/lib/services/job-service";
 import { useCandidateProfileStore } from "@/stores/candidate-profile-store";
@@ -21,6 +21,7 @@ export function ResumeInput({
   const resumeFileName = useCandidateProfileStore(
     (state) => state.resumeFileName,
   );
+  const resumeFileId = useCandidateProfileStore((state) => state.resumeFileId);
   const setResumeText = useCandidateProfileStore(
     (state) => state.setResumeText,
   );
@@ -39,10 +40,12 @@ export function ResumeInput({
     onUploadingChange?.(true);
     try {
       const parsedResume = await requestResumeParsing(file);
-      setParsedResume(
-        parsedResume.text,
-        `${parsedResume.fileName} · ${parsedResume.pageCount} 页`,
-      );
+      setParsedResume(parsedResume.text, {
+        id: parsedResume.fileId,
+        name: `${parsedResume.fileName} · ${parsedResume.pageCount} 页`,
+        size: parsedResume.fileSize,
+        uploadedAt: parsedResume.uploadedAt,
+      });
     } catch (caughtError) {
       onError(
         caughtError instanceof Error ? caughtError.message : "PDF 简历解析失败",
@@ -65,11 +68,14 @@ export function ResumeInput({
         </label>
         <span className="flex items-center gap-2">
           {resumeFileName && !isUploading && (
-            <span
-              className="max-w-32 truncate text-[9px] text-[#172033]/35"
-              title={resumeFileName}
-            >
-              {resumeFileName}
+            <span className="flex items-center gap-1.5">
+              {resumeFileId && <FileCheck2 className="size-3 text-[#1f7565]" />}
+              <span
+                className="max-w-32 truncate text-[9px] text-[#172033]/35"
+                title={`${resumeFileName}${resumeFileId ? " · 原始 PDF 已保留，可用于自动投递" : ""}`}
+              >
+                {resumeFileName}
+              </span>
             </span>
           )}
           <label className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[#edf3ef] px-2 py-1.5 text-[10px] font-medium text-[#1f7565] transition-colors hover:bg-[#e1ece6] focus-within:ring-3 focus-within:ring-[#1f8a70]/18">
@@ -78,7 +84,7 @@ export function ResumeInput({
             ) : (
               <Upload className="size-3" />
             )}
-            {isUploading ? "正在解析" : "上传 PDF"}
+            {isUploading ? "正在解析并保存" : "上传 PDF"}
             <input
               type="file"
               accept="application/pdf,.pdf"

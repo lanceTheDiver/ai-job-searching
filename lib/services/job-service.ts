@@ -2,7 +2,14 @@ import type { AnalyzeJobRequest, JobAnalysis } from "@/schemas/job";
 
 type AnalyzeJobResponse = { data?: JobAnalysis; error?: string };
 type ParseResumeResponse = {
-  data?: { text: string; fileName: string; pageCount: number };
+  data?: {
+    text: string;
+    fileName: string;
+    pageCount: number;
+    fileId: string;
+    fileSize: number;
+    uploadedAt: string;
+  };
   error?: string;
 };
 

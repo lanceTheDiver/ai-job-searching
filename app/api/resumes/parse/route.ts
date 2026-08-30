@@ -1,6 +1,8 @@
 import { getPath } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 
+import { saveResumePdf } from "@/lib/resumes/resume-storage";
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_RESUME_LENGTH = 30_000;
 const SVG_PATH_CHARS = /^[\d\s.,+\-MmZzLlHhVvCcSsQqTtAaEe]+$/;
@@ -89,8 +91,26 @@ export async function POST(request: Request) {
       );
     }
 
+    let storedFile;
+    try {
+      storedFile = await saveResumePdf(data, file.name);
+    } catch (error) {
+      console.error("PDF 简历保存失败", error);
+      return Response.json(
+        { error: "PDF 已解析，但原始文件保存失败，请重新上传" },
+        { status: 500 },
+      );
+    }
+
     return Response.json({
-      data: { text, fileName: file.name, pageCount: result.total },
+      data: {
+        text,
+        fileName: file.name,
+        pageCount: result.total,
+        fileId: storedFile.id,
+        fileSize: storedFile.size,
+        uploadedAt: storedFile.uploadedAt,
+      },
     });
   } catch (error) {
     console.error("PDF 解析失败", error);
