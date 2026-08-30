@@ -3,6 +3,7 @@ import Link from "next/link";
 const navItems = [
   { label: "岗位分析", href: "/" },
   { label: "岗位搜索", href: "/job-search" },
+  { label: "搜索历史", href: "/search-history" },
   { label: "投递记录", href: "/applications" },
 ] as const;
 

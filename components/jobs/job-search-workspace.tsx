@@ -1,55 +1,168 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { LoaderCircle, LogIn, Search } from "lucide-react";
 
+import { JobSearchForm } from "@/components/jobs/job-search-form";
 import {
   JobSearchNotices,
   JobSearchResults,
 } from "@/components/jobs/job-search-results";
 import { ResumeInput } from "@/components/resumes/resume-input";
-import { requestJobSearch } from "@/lib/services/job-search-service";
+import {
+  requestJobSearch,
+  requestJobSearchCriteria,
+} from "@/lib/services/job-search-service";
+import {
+  createSearchHistoryRecord,
+  updateSearchHistoryRecord,
+} from "@/lib/services/search-history-service";
 import type {
   JobMatch,
+  JobSearchCriteria,
+  JobSource,
   JobSearchNotice,
-  LinkedInJobSearchRequest,
+  Workplace,
 } from "@/schemas/job-search";
 import { useCandidateProfileStore } from "@/stores/candidate-profile-store";
 
-const workplaceOptions = [
-  { value: "any", label: "全部办公方式" },
-  { value: "remote", label: "远程" },
-  { value: "hybrid", label: "混合办公" },
-  { value: "onsite", label: "现场办公" },
-] as const;
+const jobSources = ["linkedin", "boss"] as const satisfies JobSource[];
+const sourceLabels: Record<JobSource, string> = {
+  linkedin: "LinkedIn",
+  boss: "Boss 直聘",
+};
 
 export function JobSearchWorkspace() {
   const resumeText = useCandidateProfileStore((state) => state.resumeText);
-  const [workplace, setWorkplace] =
-    useState<LinkedInJobSearchRequest["workplace"]>("any");
+  const resumeFileName = useCandidateProfileStore(
+    (state) => state.resumeFileName,
+  );
+  const [workplace, setWorkplace] = useState<Workplace>("any");
+  const [criteria, setCriteria] = useState<JobSearchCriteria>({
+    keywords: "",
+    bossKeywords: "",
+    location: null,
+    bossCity: "全国",
+  });
   const [results, setResults] = useState<JobMatch[]>([]);
   const [notices, setNotices] = useState<JobSearchNotice[]>([]);
   const [error, setError] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isResumeUploading, setIsResumeUploading] = useState(false);
 
-  const canSearch = resumeText.trim().length >= 80;
+  const visibleLocation = criteria.location ?? criteria.bossCity;
+  const canSearch =
+    resumeText.trim().length >= 80 &&
+    criteria.keywords.trim().length >= 2 &&
+    visibleLocation.trim().length >= 2;
+
+  async function fillCriteriaFromResume(parsedResumeText: string) {
+    try {
+      const suggested = await requestJobSearchCriteria({
+        resumeText: parsedResumeText,
+        workplace,
+      });
+      setCriteria({
+        ...suggested,
+        location:
+          suggested.location ??
+          (workplace === "remote" ? "Remote" : "Worldwide"),
+      });
+    } catch (caughtError) {
+      setError(
+        `简历已解析，但自动填写搜索条件失败：${
+          caughtError instanceof Error ? caughtError.message : "未知错误"
+        }`,
+      );
+    }
+  }
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setNotices([]);
+    setResults([]);
     setIsSearching(true);
     try {
-      const response = await requestJobSearch({ resumeText, workplace });
-      setResults(response.results);
-      setNotices(response.notices);
-    } catch (caughtError) {
-      setResults([]);
-      setNotices([]);
-      setError(
-        caughtError instanceof Error ? caughtError.message : "岗位搜索失败",
+      const setupMessages: string[] = [];
+      let historyId = "";
+      try {
+        const history = await createSearchHistoryRecord({
+          workplace,
+          resumeFileName: resumeFileName || null,
+        });
+        historyId = history.id;
+      } catch (caughtError) {
+        setupMessages.push(
+          caughtError instanceof Error
+            ? `无法创建搜索历史：${caughtError.message}`
+            : "无法创建搜索历史",
+        );
+      }
+
+      const searches = jobSources.map(async (source) => {
+        let response: Awaited<ReturnType<typeof requestJobSearch>>;
+        try {
+          response = await requestJobSearch(
+            { resumeText, workplace, criteria },
+            source,
+          );
+        } catch (caughtError) {
+          const message =
+            caughtError instanceof Error
+              ? caughtError.message
+              : `${sourceLabels[source]} 搜索失败`;
+          if (historyId) {
+            await updateSearchHistoryRecord(historyId, {
+              source,
+              jobs: [],
+              notices: [],
+              error: message,
+            }).catch(() => undefined);
+          }
+          throw caughtError;
+        }
+
+        setResults((current) => {
+          const incomingIds = new Set(response.results.map((job) => job.id));
+          return [
+            ...current.filter((job) => !incomingIds.has(job.id)),
+            ...response.results,
+          ].sort((a, b) => b.matchScore - a.matchScore);
+        });
+        setNotices((current) => [
+          ...current.filter((notice) => notice.source !== source),
+          ...response.notices,
+        ]);
+
+        if (historyId) {
+          try {
+            await updateSearchHistoryRecord(historyId, {
+              source,
+              jobs: response.results,
+              notices: response.notices,
+              criteria: response.criteria,
+              error: null,
+            });
+          } catch (caughtError) {
+            throw new Error(
+              `${sourceLabels[source]} 搜索成功，但历史保存失败：${
+                caughtError instanceof Error ? caughtError.message : "未知错误"
+              }`,
+            );
+          }
+        }
+      });
+      const outcomes = await Promise.allSettled(searches);
+      const messages = outcomes.flatMap((outcome) =>
+        outcome.status === "rejected"
+          ? [
+              outcome.reason instanceof Error
+                ? outcome.reason.message
+                : "岗位搜索失败",
+            ]
+          : [],
       );
+      setError([...new Set([...setupMessages, ...messages])].join("；"));
     } finally {
       setIsSearching(false);
     }
@@ -73,6 +186,7 @@ export function JobSearchWorkspace() {
           disabled={isSearching}
           onError={setError}
           onUploadingChange={setIsResumeUploading}
+          onParsedResume={fillCriteriaFromResume}
         />
       </section>
 
@@ -96,67 +210,15 @@ export function JobSearchWorkspace() {
           </p>
         </div>
 
-        <form
+        <JobSearchForm
+          criteria={criteria}
+          workplace={workplace}
+          isSearching={isSearching}
+          isDisabled={!canSearch || isSearching || isResumeUploading}
+          onCriteriaChange={setCriteria}
+          onWorkplaceChange={setWorkplace}
           onSubmit={handleSearch}
-          className="rounded-[22px] bg-[#172033] p-4 text-white sm:p-5"
-          aria-busy={isSearching}
-        >
-          <div className="grid gap-4 sm:grid-cols-[1fr_13rem_auto] sm:items-end">
-            <div className="self-center">
-              <p className="text-xs font-medium text-white/90">
-                AI 将从简历自动提取目标岗位与搜索地点
-              </p>
-              <p className="mt-1 text-[10px] leading-5 text-white/40">
-                获取公开职位后，会根据简历证据计算匹配度并排序
-              </p>
-            </div>
-            <label className="grid gap-2 text-[10px] text-white/48">
-              办公方式
-              <select
-                value={workplace}
-                onChange={(event) =>
-                  setWorkplace(
-                    event.target.value as LinkedInJobSearchRequest["workplace"],
-                  )
-                }
-                className="h-11 rounded-[10px] border border-white/10 bg-white/7 px-3 text-xs text-white outline-none focus:border-[#9ce0cf]/55"
-              >
-                {workplaceOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="submit"
-              disabled={!canSearch || isSearching || isResumeUploading}
-              className="mt-auto flex h-11 items-center justify-center gap-2 rounded-[10px] bg-[#9ce0cf] px-5 text-xs font-semibold text-[#172033] transition-all hover:-translate-y-0.5 hover:bg-[#b3eadc] focus-visible:ring-4 focus-visible:ring-[#9ce0cf]/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
-            >
-              {isSearching ? (
-                <LoaderCircle className="size-3.5 animate-spin" />
-              ) : (
-                <Search className="size-3.5" />
-              )}
-              {isSearching ? "搜索并匹配中" : "搜索岗位"}
-            </button>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/8 pt-4 text-[10px] leading-5 text-white/45">
-            <span className="flex items-center gap-2">
-              <LogIn className="size-3.5 text-[#9ce0cf]" />
-              搜索 Boss 直聘前，请先在 Chrome 登录并启用 OpenCLI Browser
-              Bridge。
-            </span>
-            <a
-              href="https://www.zhipin.com/"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#9ce0cf] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ce0cf]/30"
-            >
-              前往 Boss 直聘登录
-            </a>
-          </div>
-        </form>
+        />
       </section>
 
       {error && (

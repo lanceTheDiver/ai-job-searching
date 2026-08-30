@@ -10,12 +10,14 @@ type ResumeInputProps = {
   disabled?: boolean;
   onError: (message: string) => void;
   onUploadingChange?: (isUploading: boolean) => void;
+  onParsedResume?: (resumeText: string) => void | Promise<void>;
 };
 
 export function ResumeInput({
   disabled = false,
   onError,
   onUploadingChange,
+  onParsedResume,
 }: ResumeInputProps) {
   const resumeText = useCandidateProfileStore((state) => state.resumeText);
   const resumeFileName = useCandidateProfileStore(
@@ -46,6 +48,7 @@ export function ResumeInput({
         size: parsedResume.fileSize,
         uploadedAt: parsedResume.uploadedAt,
       });
+      await onParsedResume?.(parsedResume.text);
     } catch (caughtError) {
       onError(
         caughtError instanceof Error ? caughtError.message : "PDF 简历解析失败",
@@ -84,7 +87,7 @@ export function ResumeInput({
             ) : (
               <Upload className="size-3" />
             )}
-            {isUploading ? "正在解析并保存" : "上传 PDF"}
+            {isUploading ? "正在解析并填写" : "上传 PDF"}
             <input
               type="file"
               accept="application/pdf,.pdf"

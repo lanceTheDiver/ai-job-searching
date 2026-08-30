@@ -6,7 +6,7 @@ export type Workplace = z.infer<typeof workplaceSchema>;
 export const jobSourceSchema = z.enum(["linkedin", "boss"]);
 export type JobSource = z.infer<typeof jobSourceSchema>;
 
-export const linkedInJobSearchRequestSchema = z.object({
+export const jobSearchCriteriaRequestSchema = z.object({
   resumeText: z
     .string()
     .trim()
@@ -23,6 +23,12 @@ export const jobSearchCriteriaSchema = z
     bossCity: z.string().trim().min(2).max(20),
   })
   .strict();
+
+export const linkedInJobSearchRequestSchema =
+  jobSearchCriteriaRequestSchema.extend({
+    source: jobSourceSchema.optional(),
+    criteria: jobSearchCriteriaSchema,
+  });
 
 export const linkedInJobMatchSchema = z.object({
   id: z.string(),
@@ -69,6 +75,9 @@ export const jobRankingSchema = z
 
 export type LinkedInJobSearchRequest = z.infer<
   typeof linkedInJobSearchRequestSchema
+>;
+export type JobSearchCriteriaRequest = z.infer<
+  typeof jobSearchCriteriaRequestSchema
 >;
 export type JobSearchCriteria = z.infer<typeof jobSearchCriteriaSchema>;
 export type JobMatch = z.infer<typeof linkedInJobMatchSchema>;

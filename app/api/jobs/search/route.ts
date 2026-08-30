@@ -1,7 +1,3 @@
-import {
-  deriveJobSearchCriteria,
-  JobSearchCriteriaError,
-} from "@/lib/ai/derive-job-search-criteria";
 import { JobRankingError, rankJobs } from "@/lib/ai/rank-jobs";
 import {
   BOSS_LOGIN_URL,
@@ -19,6 +15,55 @@ import {
 } from "@/schemas/job-search";
 
 export const runtime = "nodejs";
+
+const BOSS_CITIES = [
+  "北京",
+  "上海",
+  "广州",
+  "深圳",
+  "杭州",
+  "成都",
+  "南京",
+  "武汉",
+  "西安",
+  "苏州",
+  "长沙",
+  "天津",
+  "重庆",
+  "郑州",
+  "东莞",
+  "青岛",
+  "合肥",
+  "佛山",
+  "宁波",
+  "厦门",
+  "大连",
+  "珠海",
+  "无锡",
+  "济南",
+  "福州",
+  "昆明",
+  "哈尔滨",
+  "沈阳",
+  "石家庄",
+  "贵阳",
+  "南宁",
+  "太原",
+  "海口",
+  "兰州",
+  "乌鲁木齐",
+  "长春",
+  "南昌",
+  "常州",
+  "温州",
+  "嘉兴",
+  "徐州",
+  "香港",
+] as const;
+
+function normalizeBossCity(location: string) {
+  return BOSS_CITIES.find((city) => location.includes(city)) ?? "全国";
+}
 
 function getBossKeywords(
   keywords: string,
@@ -88,40 +133,47 @@ export async function POST(request: Request) {
   }
 
   try {
-    const criteria = await deriveJobSearchCriteria(
-      parsed.data.resumeText,
-      parsed.data.workplace,
-    );
-    const [linkedInSearch, bossSearch] = await Promise.allSettled([
-      searchLinkedInJobs({
-        keywords: criteria.keywords,
-        location:
-          parsed.data.workplace === "remote"
-            ? "Remote"
-            : (criteria.location ?? "Worldwide"),
-        workplace: parsed.data.workplace,
-      }),
-      searchBossJobs({
-        keywords: getBossKeywords(criteria.bossKeywords, parsed.data.workplace),
-        city: criteria.bossCity,
-      }),
-    ]);
-
+    const criteria = {
+      ...parsed.data.criteria,
+      bossCity: normalizeBossCity(
+        parsed.data.criteria.location ?? parsed.data.criteria.bossCity,
+      ),
+    };
     const jobs: SearchableJob[] = [];
     const notices: JobSearchNotice[] = [];
-    if (linkedInSearch.status === "fulfilled") {
-      jobs.push(...linkedInSearch.value);
-    } else {
-      notices.push(noticeForLinkedInError(linkedInSearch.reason));
+
+    if (!parsed.data.source || parsed.data.source === "linkedin") {
+      try {
+        jobs.push(
+          ...(await searchLinkedInJobs({
+            keywords: criteria.keywords,
+            location: criteria.location ?? criteria.bossCity,
+            workplace: parsed.data.workplace,
+          })),
+        );
+      } catch (error) {
+        notices.push(noticeForLinkedInError(error));
+      }
     }
-    if (bossSearch.status === "fulfilled") {
-      jobs.push(...bossSearch.value);
-    } else {
-      notices.push(noticeForBossError(bossSearch.reason));
+
+    if (!parsed.data.source || parsed.data.source === "boss") {
+      try {
+        jobs.push(
+          ...(await searchBossJobs({
+            keywords: getBossKeywords(
+              criteria.bossKeywords,
+              parsed.data.workplace,
+            ),
+            city: criteria.bossCity,
+          })),
+        );
+      } catch (error) {
+        notices.push(noticeForBossError(error));
+      }
     }
 
     if (jobs.length === 0) {
-      return Response.json({ data: [], notices });
+      return Response.json({ data: [], notices, criteria });
     }
 
     const ranking = await rankJobs(parsed.data.resumeText, jobs);
@@ -148,12 +200,9 @@ export async function POST(request: Request) {
       })
       .sort((a, b) => b.matchScore - a.matchScore);
 
-    return Response.json({ data: results, notices });
+    return Response.json({ data: results, notices, criteria });
   } catch (error) {
-    if (
-      error instanceof JobSearchCriteriaError ||
-      error instanceof JobRankingError
-    ) {
+    if (error instanceof JobRankingError) {
       return Response.json(
         { error: error.message },
         { status: error.code === "CONFIGURATION" ? 503 : 502 },

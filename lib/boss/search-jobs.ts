@@ -84,22 +84,11 @@ function getOpenCliFailure(error: OpenCliProcessError) {
   };
 }
 
-function withOpenCliType(
-  message: string,
-  providerCode: string,
-  retried: boolean,
-) {
-  return `[OpenCLI ${providerCode}] ${message}${retried ? "（已自动重试 1 次）" : ""}`;
+function withOpenCliType(message: string, providerCode: string) {
+  return `[OpenCLI ${providerCode}] ${message}`;
 }
 
-function shouldRetryOpenCliFailure(error: OpenCliProcessError) {
-  const { detail } = getOpenCliFailure(error);
-  return /tab (?:was )?closed|target closed|session.*detached|job-list response|did not expose.*job-?list|joblist\.json|network capture/i.test(
-    detail,
-  );
-}
-
-function createBossError(error: OpenCliProcessError, retried: boolean) {
+function createBossError(error: OpenCliProcessError) {
   const { detail, providerCode, providerMessage } = getOpenCliFailure(error);
 
   if (
@@ -110,7 +99,6 @@ function createBossError(error: OpenCliProcessError, retried: boolean) {
       withOpenCliType(
         "请先在 Chrome 登录 Boss 直聘，并确认 Browser Bridge 扩展已启用。",
         providerCode,
-        retried,
       ),
       "AUTH_REQUIRED",
       providerCode,
@@ -126,7 +114,6 @@ function createBossError(error: OpenCliProcessError, retried: boolean) {
       withOpenCliType(
         "无法连接 Browser Bridge，请打开 Chrome 并启用 OpenCLI 扩展。",
         providerCode,
-        retried,
       ),
       "BROWSER_UNAVAILABLE",
       providerCode,
@@ -138,14 +125,14 @@ function createBossError(error: OpenCliProcessError, retried: boolean) {
     /timed?\s*out|timeout/i.test(detail)
   ) {
     return new BossSearchError(
-      withOpenCliType("Boss 直聘搜索超时，请稍后重试。", providerCode, retried),
+      withOpenCliType("Boss 直聘搜索超时，请稍后重试。", providerCode),
       "TIMEOUT",
       providerCode,
     );
   }
   if (error.code === 66) {
     return new BossSearchError(
-      withOpenCliType("Boss 直聘暂未找到匹配岗位。", providerCode, retried),
+      withOpenCliType("Boss 直聘暂未找到匹配岗位。", providerCode),
       "EMPTY_RESULT",
       providerCode,
     );
@@ -156,7 +143,6 @@ function createBossError(error: OpenCliProcessError, retried: boolean) {
         ? `Boss 直聘搜索失败：${providerMessage}`
         : "Boss 直聘暂时无法搜索，请稍后重试。",
       providerCode,
-      retried,
     ),
     "PROVIDER_ERROR",
     providerCode,
@@ -180,16 +166,16 @@ async function runOpenCliBossSearch(input: { keywords: string; city: string }) {
       "--window",
       "background",
       "--site-session",
-      "persistent",
+      "ephemeral",
     ],
     {
       encoding: "utf8",
-      timeout: 90_000,
+      timeout: 35_000,
       maxBuffer: 2 * 1024 * 1024,
       env: {
         ...process.env,
         OPENCLI_BROWSER_CONNECT_TIMEOUT: "15",
-        OPENCLI_BROWSER_COMMAND_TIMEOUT: "60",
+        OPENCLI_BROWSER_COMMAND_TIMEOUT: "25",
       },
     },
   );
@@ -204,22 +190,12 @@ export async function searchBossJobs(input: {
   keywords: string;
   city: string;
 }): Promise<SearchableJob[]> {
-  let stdout = "";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const result = await runOpenCliBossSearch(input);
-      stdout = result.stdout;
-      break;
-    } catch (error) {
-      const processError = error as OpenCliProcessError;
-      const shouldRetry =
-        attempt === 0 && shouldRetryOpenCliFailure(processError);
-      if (!shouldRetry) {
-        throw createBossError(processError, attempt > 0);
-      }
-      // 给 Browser Bridge 一点时间释放失效标签页，再进行唯一一次重试。
-      await new Promise((resolve) => setTimeout(resolve, 800));
-    }
+  let stdout: string;
+  try {
+    const result = await runOpenCliBossSearch(input);
+    stdout = result.stdout;
+  } catch (error) {
+    throw createBossError(error as OpenCliProcessError);
   }
 
   let rawResults: unknown;
