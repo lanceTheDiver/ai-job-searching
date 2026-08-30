@@ -14,25 +14,32 @@
 
 - `type` 必填，使用下方允许的英文小写类型。
 - `scope` 可选，使用英文小写名词描述主要影响范围。
-- `description` 必填，默认使用简洁英文祈使句，不加句号，不超过 72 个字符。
+- `description` 必填，必须使用简洁中文，不加句号，不超过 72 个字符。
 - 简单提交只写标题；只有需要解释原因、实现取舍或迁移方式时才添加正文。
 - 正文与 footer 必须分别与上一部分空一行。
 
+## 语言要求
+
+- 每次提交的 `description`、正文和 footer 说明都必须使用中文。
+- Conventional Commits 规定的 `type`、英文小写 `scope` 和 `BREAKING CHANGE` 标记保持英文，不翻译为中文。
+- 代码标识符、命令、文件路径、库名和专有名词可以保留原文。
+- 自动生成提交信息时不得使用英文描述，即使改动代码、注释或需求本身使用英文。
+
 ## 允许的 type
 
-| type       | 使用场景                         | 示例                                      |
-| ---------- | -------------------------------- | ----------------------------------------- |
-| `feat`     | 新增用户可感知的功能             | `feat(jobs): add structured job analysis` |
-| `fix`      | 修复错误或不正确行为             | `fix(api): handle invalid model output`   |
-| `docs`     | 只修改文档或规范                 | `docs(git): add commit workflow`          |
-| `style`    | 只调整格式，不改变行为           | `style(ui): format analyzer components`   |
-| `refactor` | 重构代码但不新增功能、不修复缺陷 | `refactor(ai): isolate response parsing`  |
-| `perf`     | 性能优化                         | `perf(ui): reduce client bundle size`     |
-| `test`     | 新增或修改测试                   | `test(schema): cover invalid job input`   |
-| `build`    | 构建系统或生产依赖变化           | `build(deps): upgrade Next.js`            |
-| `ci`       | CI/CD 配置与脚本                 | `ci(github): add typecheck workflow`      |
-| `chore`    | 其他维护任务                     | `chore(repo): update ignore rules`        |
-| `revert`   | 撤销先前提交                     | `revert: remove automatic job import`     |
+| type       | 使用场景                         | 示例                             |
+| ---------- | -------------------------------- | -------------------------------- |
+| `feat`     | 新增用户可感知的功能             | `feat(jobs): 增加结构化岗位分析` |
+| `fix`      | 修复错误或不正确行为             | `fix(api): 处理无效的模型输出`   |
+| `docs`     | 只修改文档或规范                 | `docs(git): 增加提交工作流说明`  |
+| `style`    | 只调整格式，不改变行为           | `style(ui): 格式化分析组件`      |
+| `refactor` | 重构代码但不新增功能、不修复缺陷 | `refactor(ai): 拆分响应解析逻辑` |
+| `perf`     | 性能优化                         | `perf(ui): 减少客户端包体积`     |
+| `test`     | 新增或修改测试                   | `test(schema): 覆盖无效岗位输入` |
+| `build`    | 构建系统或生产依赖变化           | `build(deps): 升级 Next.js`      |
+| `ci`       | CI/CD 配置与脚本                 | `ci(github): 增加类型检查工作流` |
+| `chore`    | 其他维护任务                     | `chore(repo): 更新忽略规则`      |
+| `revert`   | 撤销先前提交                     | `revert: 移除自动导入岗位功能`   |
 
 `feat` 对应语义化版本的 MINOR，`fix` 对应 PATCH；任何带破坏性变更标记的提交对应 MAJOR。
 
@@ -58,9 +65,9 @@
 破坏性变更必须在 type/scope 后添加 `!`，并在 footer 中说明迁移影响：
 
 ```text
-feat(api)!: change job analysis response shape
+feat(api)!: 调整岗位分析响应结构
 
-BREAKING CHANGE: clients must read the analysis from the data field.
+BREAKING CHANGE: 客户端必须从 data 字段读取分析结果。
 ```
 
 `BREAKING CHANGE` 必须保持英文大写。
@@ -85,7 +92,7 @@ BREAKING CHANGE: clients must read the analysis from the data field.
 3. 检查敏感信息，包括 `.env*`、API key、token、凭据、私钥和个人数据；发现风险时停止提交并报告。
 4. 判断改动是否应拆分为多个原子提交；可以安全拆分时按逻辑范围分别提交，无法判断时先询问用户。
 5. 按改动风险运行必要检查，默认至少执行 `pnpm format:check`、`pnpm lint` 和 `pnpm tsc --noEmit`。纯文档修改可以只运行相关格式检查。
-6. 根据实际 diff 自动选择 type、scope 和 description，不根据聊天中的预期或未落地内容编写提交信息。
+6. 根据实际 diff 自动选择 type、scope 和中文 description，不根据聊天中的预期或未落地内容编写提交信息。
 7. 使用明确文件路径进行暂存，优先 `git add <path...>`；除非已确认所有未提交内容都属于本次提交，否则不得使用 `git add .` 或 `git add -A`。
 8. 执行提交后检查 `git status --short` 和最新提交，确认提交内容与预期一致。
 9. 只有用户明确要求推送时，才执行推送流程。
@@ -125,17 +132,17 @@ BREAKING CHANGE: clients must read the analysis from the data field.
 ## 示例
 
 ```text
-feat(ui): redesign job analysis workspace
+feat(ui): 重设计岗位分析工作区
 ```
 
 ```text
-fix(ai): validate structured model output with Zod
+fix(ai): 使用 Zod 验证结构化模型输出
 ```
 
 ```text
-docs(git): document conventional commit workflow
+docs(git): 记录 Conventional Commits 工作流
 ```
 
 ```text
-build(deps): add Prettier formatting commands
+build(deps): 增加 Prettier 格式化命令
 ```
