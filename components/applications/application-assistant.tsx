@@ -38,8 +38,6 @@ export function ApplicationAssistant({ job }: { job: JobMatch }) {
   const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState("");
 
-  if (job.source !== "linkedin") return null;
-
   async function startApplication() {
     if (!resumeFileId) return;
     setError("");
@@ -49,7 +47,7 @@ export function ApplicationAssistant({ job }: { job: JobMatch }) {
         await prepareApplication({
           job: {
             id: job.id,
-            source: "linkedin",
+            source: job.source,
             title: job.title,
             company: job.company,
             location: job.location,
@@ -103,7 +101,7 @@ export function ApplicationAssistant({ job }: { job: JobMatch }) {
           ) : (
             <Send className="size-3" />
           )}
-          {isWorking ? "正在打开浏览器" : "Playwright 辅助投递"}
+          {isWorking ? "正在打开浏览器" : "OpenCLI 辅助投递"}
         </button>
         {!resumeFileId && (
           <p className="mt-2 text-[10px] text-[#9d5148]">

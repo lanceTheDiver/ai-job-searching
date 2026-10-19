@@ -79,7 +79,7 @@ export async function createApplicationRecord(
       resumeFileId: input.resumeFileId,
       resumeFileName: input.resumeFileName,
       status: "preparing",
-      statusMessage: "正在打开 LinkedIn 并准备申请表单",
+      statusMessage: `正在打开 ${input.job.source === "boss" ? "Boss 直聘" : "LinkedIn"} 并准备投递`,
       startedAt: now,
       updatedAt: now,
       submittedAt: null,

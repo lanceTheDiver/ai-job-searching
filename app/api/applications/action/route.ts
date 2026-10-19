@@ -3,10 +3,10 @@ import {
   updateApplicationRecord,
 } from "@/lib/applications/application-storage";
 import {
-  cancelLinkedInApplication,
-  confirmLinkedInApplication,
-  continueLinkedInApplication,
-} from "@/lib/linkedin/application-automation";
+  cancelApplicationAutomation,
+  confirmApplicationAutomation,
+  continueApplicationAutomation,
+} from "@/lib/applications/application-automation";
 import { applicationActionRequestSchema } from "@/schemas/application";
 
 export const runtime = "nodejs";
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
-      await cancelLinkedInApplication(record.id);
+      await cancelApplicationAutomation(record.source, record.id);
       const updated = await updateApplicationRecord(record.id, {
         status: "cancelled",
         statusMessage: "已取消本次辅助投递，没有提交申请",
@@ -66,8 +66,8 @@ export async function POST(request: Request) {
 
     const result =
       parsed.data.action === "confirm"
-        ? await confirmLinkedInApplication(record.id)
-        : await continueLinkedInApplication(record.id);
+        ? await confirmApplicationAutomation(record.source, record.id)
+        : await continueApplicationAutomation(record.source, record.id);
     const updated = await updateApplicationRecord(record.id, {
       status: result.status,
       statusMessage: result.message,
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     });
     return Response.json({ data: updated });
   } catch (error) {
-    console.error("执行 LinkedIn 投递操作失败", error);
+    console.error("执行投递操作失败", error);
     return Response.json(
       {
         error:

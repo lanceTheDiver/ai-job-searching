@@ -1,15 +1,16 @@
 "server-only";
 
-import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
-
 import {
-  chromium,
-  type BrowserContext,
-  type Locator,
-  type Page,
-} from "playwright";
-
+  clickTagged,
+  closeSession,
+  fillTagged,
+  isSessionAlive,
+  openPage,
+  pageEval,
+  serializeRegex,
+  sleep,
+  uploadTagged,
+} from "@/lib/applications/opencli-browser";
 import { getStoredResume } from "@/lib/resumes/resume-storage";
 import type { ApplicationStatus } from "@/schemas/application";
 
@@ -19,14 +20,13 @@ type AutomationResult = {
 };
 
 type ApplicationSession = {
-  page: Page;
+  session: string;
   jobUrl: string;
   resumeFilePath: string;
   resumeText: string;
 };
 
 type AutomationGlobals = typeof globalThis & {
-  linkedinApplicationContext?: Promise<BrowserContext>;
   linkedinApplicationSessions?: Map<string, ApplicationSession>;
 };
 
@@ -36,62 +36,37 @@ const sessions =
   new Map<string, ApplicationSession>();
 automationGlobals.linkedinApplicationSessions = sessions;
 
-const USER_DATA_DIRECTORY = resolve(
-  process.env.LINKEDIN_BROWSER_DATA_DIR ||
-    join(process.cwd(), ".data", "browsers", "linkedin"),
+const EASY_APPLY_PATTERN = serializeRegex(/Easy Apply|轻松申请|简易申请/i);
+const SUBMIT_PATTERN = serializeRegex(
+  /Submit application|提交.*申请|发送.*申请/i,
 );
+const REVIEW_PATTERN = serializeRegex(/Review|检查.*申请|审核.*申请/i);
+const NEXT_PATTERN = serializeRegex(/Next|Continue|下一步|继续/i);
+const LOGIN_URL_PATTERN = serializeRegex(/\/login|\/checkpoint/i);
+const JOB_URL_PATTERN = serializeRegex(
+  /linkedin\.com\/jobs\/(?:view|collections)/i,
+);
+const DIALOG_PATTERN = serializeRegex(
+  /Easy Apply|Contact info|Resume|Work experience|轻松申请|联系方式|简历/i,
+);
+const RESUME_CONTEXT_PATTERN = serializeRegex(
+  /resume|curriculum vitae|\bCV\b|简历/i,
+);
+const SUCCESS_PATTERN = serializeRegex(
+  /Application sent|application was sent|申请已发送|申请已提交/i,
+);
+const EMAIL_LABEL_PATTERN = serializeRegex(/email|电子邮件|邮箱/i);
+const PHONE_LABEL_PATTERN = serializeRegex(/phone|mobile|电话号码|手机/i);
 
-const EASY_APPLY_PATTERN = /Easy Apply|轻松申请|简易申请/i;
-const SUBMIT_PATTERN = /Submit application|提交.*申请|发送.*申请/i;
-const REVIEW_PATTERN = /Review|检查.*申请|审核.*申请/i;
-const NEXT_PATTERN = /Next|Continue|下一步|继续/i;
+const BUTTON_SELECTOR = 'button, [role="button"]';
 
-async function getBrowserContext() {
-  if (!automationGlobals.linkedinApplicationContext) {
-    automationGlobals.linkedinApplicationContext = (async () => {
-      await mkdir(USER_DATA_DIRECTORY, { recursive: true, mode: 0o700 });
-      const context = await chromium.launchPersistentContext(
-        USER_DATA_DIRECTORY,
-        {
-          channel: process.env.LINKEDIN_BROWSER_CHANNEL || "chrome",
-          headless: false,
-          viewport: null,
-        },
-      );
-      context.on("close", () => {
-        automationGlobals.linkedinApplicationContext = undefined;
-        sessions.clear();
-      });
-      return context;
-    })().catch((error) => {
-      automationGlobals.linkedinApplicationContext = undefined;
-      throw error;
-    });
-  }
-  return automationGlobals.linkedinApplicationContext;
-}
-
-async function firstVisible(locator: Locator) {
-  const count = await locator.count();
-  for (let index = 0; index < count; index += 1) {
-    const candidate = locator.nth(index);
-    if (await candidate.isVisible().catch(() => false)) return candidate;
-  }
-  return null;
-}
-
-async function getApplicationRoot(page: Page) {
-  const linkedInModal = await firstVisible(
-    page.locator(".jobs-easy-apply-modal"),
-  );
-  if (linkedInModal) return linkedInModal;
-  return firstVisible(
-    page.getByRole("dialog").filter({
-      hasText:
-        /Easy Apply|Contact info|Resume|Work experience|轻松申请|联系方式|简历/i,
-    }),
-  );
-}
+/** 页面脚本公共前缀：定位 Easy Apply 弹窗。 */
+const ROOT_JS = `
+const root =
+  visible(document, ".jobs-easy-apply-modal")[0] ||
+  visible(document, '[role="dialog"]', ${DIALOG_PATTERN})[0] ||
+  null;
+`;
 
 function extractContact(resumeText: string) {
   const phoneLine = resumeText
@@ -106,141 +81,168 @@ function extractContact(resumeText: string) {
   };
 }
 
-async function fillKnownContactFields(root: Locator, resumeText: string) {
+/** 标记弹窗里匹配名称且为空、可编辑的输入框。 */
+async function tagEmptyField(session: string, labelPattern: string) {
+  const { found } = await pageEval<{ found: boolean }>(
+    session,
+    `${ROOT_JS}
+    if (!root) return { found: false };
+    const re = rx(${labelPattern});
+    const input = visible(root, "input:not([type=hidden]):not([type=file]), textarea").find((el) => {
+      const label = [...(el.labels || [])].map((l) => l.textContent).join(" ") + " " + (el.getAttribute("aria-label") || "");
+      return re.test(label) && !el.readOnly && !el.disabled && !el.value.trim();
+    });
+    return { found: tag(input) };`,
+  );
+  return found;
+}
+
+async function fillKnownContactFields(session: string, resumeText: string) {
   const contact = extractContact(resumeText);
   const fields = [
-    { name: /email|电子邮件|邮箱/i, value: contact.email },
-    { name: /phone|mobile|电话号码|手机/i, value: contact.phone },
+    { pattern: EMAIL_LABEL_PATTERN, value: contact.email },
+    { pattern: PHONE_LABEL_PATTERN, value: contact.phone },
   ];
-
   for (const field of fields) {
     if (!field.value) continue;
-    const input = await firstVisible(root.getByLabel(field.name));
-    if (!input || !(await input.isEditable().catch(() => false))) continue;
-    if (!(await input.inputValue().catch(() => "")).trim()) {
-      await input.fill(field.value);
+    if (await tagEmptyField(session, field.pattern)) {
+      await fillTagged(session, field.value);
     }
   }
 }
 
-async function uploadResume(root: Locator, resumeFilePath: string) {
-  const inputs = root.locator('input[type="file"]');
-  const count = await inputs.count();
-  for (let index = 0; index < count; index += 1) {
-    const input = inputs.nth(index);
-    const contextText = await input.evaluate((element) => {
-      const fileInput = element as HTMLInputElement;
-      const container = element.closest(
-        ".jobs-document-upload, fieldset, section, form",
-      );
-      return [
-        element.getAttribute("name"),
-        element.getAttribute("aria-label"),
-        ...Array.from(fileInput.labels ?? []).map((label) => label.textContent),
-        container?.textContent,
-      ]
-        .filter(Boolean)
-        .join(" ");
-    });
-    if (!/resume|curriculum vitae|\bCV\b|简历/i.test(contextText)) {
-      continue;
-    }
-    const currentFiles = await input.evaluate((element: HTMLInputElement) =>
-      Array.from(element.files ?? []).map((file) => file.name),
+async function uploadResume(session: string, resumeFilePath: string) {
+  // 最多处理 3 个未上传的简历 input，避免上传失败时死循环
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { found } = await pageEval<{ found: boolean }>(
+      session,
+      `${ROOT_JS}
+      if (!root) return { found: false };
+      const re = rx(${RESUME_CONTEXT_PATTERN});
+      const input = [...root.querySelectorAll('input[type="file"]')].find((el) => {
+        const container = el.closest(".jobs-document-upload, fieldset, section, form");
+        const context = [
+          el.getAttribute("name"),
+          el.getAttribute("aria-label"),
+          ...[...(el.labels || [])].map((l) => l.textContent),
+          container && container.textContent,
+        ].filter(Boolean).join(" ");
+        return re.test(context) && (!el.files || el.files.length === 0);
+      });
+      return { found: tag(input) };`,
     );
-    if (currentFiles.length === 0) await input.setInputFiles(resumeFilePath);
+    if (!found) return;
+    await uploadTagged(session, resumeFilePath);
   }
 }
 
-async function hasUnansweredRequiredFields(root: Locator) {
-  const fields = root.locator(
-    'input[required], input[aria-required="true"], textarea[required], textarea[aria-required="true"], select[required], select[aria-required="true"]',
+type FormState = {
+  hasRoot: boolean;
+  hasSubmit: boolean;
+  hasUnansweredRequired: boolean;
+};
+
+function readFormState(session: string) {
+  return pageEval<FormState>(
+    session,
+    `${ROOT_JS}
+    if (!root) return { hasRoot: false, hasSubmit: false, hasUnansweredRequired: false };
+    const required = visible(
+      root,
+      'input[required], input[aria-required="true"], textarea[required], textarea[aria-required="true"], select[required], select[aria-required="true"]',
+    );
+    const hasUnansweredRequired = required.some((field) => {
+      const type = field.getAttribute("type");
+      if (type === "radio" || type === "checkbox") {
+        const name = field.getAttribute("name");
+        return !name || !root.querySelector('input[name="' + CSS.escape(name) + '"]:checked');
+      }
+      return !String(field.value || "").trim();
+    });
+    return {
+      hasRoot: true,
+      hasSubmit: visible(root, ${JSON.stringify(BUTTON_SELECTOR)}, ${SUBMIT_PATTERN}).length > 0,
+      hasUnansweredRequired,
+    };`,
   );
-  const count = await fields.count();
-  for (let index = 0; index < count; index += 1) {
-    const field = fields.nth(index);
-    if (!(await field.isVisible().catch(() => false))) continue;
-    const tagName = await field.evaluate((element) => element.tagName);
-    const type = await field.getAttribute("type");
-    if (type === "radio" || type === "checkbox") {
-      const name = await field.getAttribute("name");
-      const selector = name
-        ? `input[name=${JSON.stringify(name)}]:checked`
-        : undefined;
-      if (!selector || (await root.locator(selector).count()) === 0)
-        return true;
-      continue;
-    }
-    if (tagName === "SELECT") {
-      if (!(await field.inputValue()).trim()) return true;
-      continue;
-    }
-    if (!(await field.inputValue()).trim()) return true;
-  }
-  return false;
 }
 
-async function isLoginRequired(page: Page) {
-  if (/\/login|\/checkpoint/i.test(page.url())) return true;
-  const passwordInput = page.locator('input[type="password"]');
-  return (
-    (await passwordInput.count()) > 0 &&
-    (await passwordInput.first().isVisible())
+/** 标记弹窗内第一个匹配的按钮。 */
+async function tagButton(session: string, patterns: string[]) {
+  const { found } = await pageEval<{ found: boolean }>(
+    session,
+    `${ROOT_JS}
+    if (!root) return { found: false };
+    let button = null;
+    for (const pattern of [${patterns.join(", ")}]) {
+      button = visible(root, ${JSON.stringify(BUTTON_SELECTOR)}, pattern)[0];
+      if (button) break;
+    }
+    return { found: tag(button) };`,
   );
+  return found;
+}
+
+async function isLoginRequired(session: string) {
+  const { loginRequired } = await pageEval<{ loginRequired: boolean }>(
+    session,
+    `return { loginRequired:
+      rx(${LOGIN_URL_PATTERN}).test(location.href) ||
+      visible(document, 'input[type="password"]').length > 0 };`,
+  );
+  return loginRequired;
 }
 
 async function advanceApplication(
-  session: ApplicationSession,
+  entry: ApplicationSession,
 ): Promise<AutomationResult> {
-  const { page, jobUrl, resumeFilePath, resumeText } = session;
-  await page.bringToFront();
+  const { session, jobUrl, resumeFilePath, resumeText } = entry;
 
-  if (await isLoginRequired(page)) {
+  if (await isLoginRequired(session)) {
     return {
       status: "awaiting_login",
-      message:
-        "请在已打开的 Chrome 中完成 LinkedIn 登录，然后点击“继续自动填写”",
+      message: "请在浏览器中完成 LinkedIn 登录，然后点击“继续自动填写”",
     };
   }
 
-  if (!/linkedin\.com\/jobs\/(?:view|collections)/i.test(page.url())) {
-    await page.goto(jobUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
+  const { onJobPage } = await pageEval<{ onJobPage: boolean }>(
+    session,
+    `return { onJobPage: rx(${JOB_URL_PATTERN}).test(location.href) };`,
+  );
+  if (!onJobPage) {
+    await openPage(session, jobUrl);
+    await sleep(1_000);
   }
 
-  const easyApplyButton = await firstVisible(
-    page.getByRole("button", { name: EASY_APPLY_PATTERN }),
+  const { clicked } = await pageEval<{ clicked: boolean }>(
+    session,
+    `return { clicked: tag(visible(document, 'button, [role="button"], a', ${EASY_APPLY_PATTERN})[0]) };`,
   );
-  if (easyApplyButton) {
-    await easyApplyButton.click();
-    await page.waitForTimeout(800);
+  if (clicked) {
+    await clickTagged(session);
+    await sleep(800);
   }
 
   for (let step = 0; step < 12; step += 1) {
-    const root = await getApplicationRoot(page);
-    if (!root) {
+    const state = await readFormState(session);
+    if (!state.hasRoot) {
       return {
         status: "needs_attention",
         message:
           "没有检测到 LinkedIn Easy Apply 表单，可能需要手动打开或该岗位不支持站内申请",
       };
     }
-    await fillKnownContactFields(root, resumeText);
-    await uploadResume(root, resumeFilePath);
+    await fillKnownContactFields(session, resumeText);
+    await uploadResume(session, resumeFilePath);
 
-    const submitButton = await firstVisible(
-      root.getByRole("button", { name: SUBMIT_PATTERN }),
-    );
-    if (submitButton) {
+    if (state.hasSubmit) {
       return {
         status: "awaiting_confirmation",
         message: "表单已填写到最终提交步骤，请检查已打开的浏览器并确认提交",
       };
     }
 
-    if (await hasUnansweredRequiredFields(root)) {
+    if (state.hasUnansweredRequired) {
       return {
         status: "needs_attention",
         message:
@@ -248,22 +250,15 @@ async function advanceApplication(
       };
     }
 
-    const reviewButton = await firstVisible(
-      root.getByRole("button", { name: REVIEW_PATTERN }),
-    );
-    const nextButton = await firstVisible(
-      root.getByRole("button", { name: NEXT_PATTERN }),
-    );
-    const advanceButton = reviewButton ?? nextButton;
-    if (!advanceButton) {
+    if (!(await tagButton(session, [REVIEW_PATTERN, NEXT_PATTERN]))) {
       return {
         status: "needs_attention",
         message:
           "未找到可继续的 Easy Apply 步骤，可能不是 Easy Apply 岗位，请在浏览器中检查",
       };
     }
-    await advanceButton.click();
-    await page.waitForTimeout(700);
+    await clickTagged(session);
+    await sleep(700);
   }
 
   return {
@@ -278,76 +273,72 @@ export async function prepareLinkedInApplication(input: {
   resumeFileId: string;
   resumeText: string;
 }) {
-  const context = await getBrowserContext();
   const resume = await getStoredResume(input.resumeFileId);
-  const existingSession = sessions.get(input.applicationId);
-  const page = existingSession?.page ?? (await context.newPage());
-  const session = {
-    page,
+  const entry = {
+    session: `linkedin-${input.applicationId}`,
     jobUrl: input.jobUrl,
     resumeFilePath: resume.filePath,
     resumeText: input.resumeText,
   };
-  sessions.set(input.applicationId, session);
-  await page.goto(input.jobUrl, {
-    waitUntil: "domcontentloaded",
-    timeout: 60_000,
-  });
-  return advanceApplication(session);
+  sessions.set(input.applicationId, entry);
+  await openPage(entry.session, input.jobUrl);
+  return advanceApplication(entry);
+}
+
+async function getLiveSession(applicationId: string) {
+  const entry = sessions.get(applicationId);
+  return entry && (await isSessionAlive(entry.session)) ? entry : null;
 }
 
 export async function continueLinkedInApplication(applicationId: string) {
-  const session = sessions.get(applicationId);
-  if (!session || session.page.isClosed()) {
+  const entry = await getLiveSession(applicationId);
+  if (!entry) {
     return {
       status: "failed",
       message: "浏览器投递会话已失效，请从岗位搜索页重新发起",
     } satisfies AutomationResult;
   }
-  return advanceApplication(session);
+  return advanceApplication(entry);
 }
 
 export async function confirmLinkedInApplication(applicationId: string) {
-  const session = sessions.get(applicationId);
-  if (!session || session.page.isClosed()) {
+  const entry = await getLiveSession(applicationId);
+  if (!entry) {
     return {
       status: "failed",
       message: "浏览器投递会话已失效，未执行提交",
     } satisfies AutomationResult;
   }
-  await session.page.bringToFront();
-  const root = await getApplicationRoot(session.page);
-  if (!root) {
+  const { session } = entry;
+  const state = await readFormState(session);
+  if (!state.hasRoot) {
     return {
       status: "needs_attention",
       message: "未检测到 Easy Apply 确认表单，未执行提交",
     } satisfies AutomationResult;
   }
-  const submitButton = await firstVisible(
-    root.getByRole("button", { name: SUBMIT_PATTERN }),
-  );
-  if (!submitButton) {
+  if (!(await tagButton(session, [SUBMIT_PATTERN]))) {
     return {
       status: "needs_attention",
       message: "当前页面不在最终提交步骤，未执行提交，请在浏览器中检查",
     } satisfies AutomationResult;
   }
-  await submitButton.click();
-  await session.page.waitForTimeout(1_500);
-  const successMessage = await firstVisible(
-    session.page.getByText(
-      /Application sent|application was sent|申请已发送|申请已提交/i,
-    ),
+  await clickTagged(session);
+  await sleep(1_500);
+
+  const { success } = await pageEval<{ success: boolean }>(
+    session,
+    `return { success: rx(${SUCCESS_PATTERN}).test(document.body.innerText) };`,
   );
-  const submitStillVisible = await submitButton.isVisible().catch(() => false);
-  if (!successMessage && submitStillVisible) {
+  const after = await readFormState(session);
+  if (!success && after.hasSubmit) {
     return {
       status: "needs_attention",
       message: "点击提交后页面未确认成功，可能仍有校验项，请在浏览器中检查",
     } satisfies AutomationResult;
   }
   sessions.delete(applicationId);
-  await session.page.close().catch(() => undefined);
+  await closeSession(session);
   return {
     status: "submitted",
     message: "已按你的确认提交 LinkedIn 申请",
@@ -355,9 +346,7 @@ export async function confirmLinkedInApplication(applicationId: string) {
 }
 
 export async function cancelLinkedInApplication(applicationId: string) {
-  const session = sessions.get(applicationId);
+  const entry = sessions.get(applicationId);
   sessions.delete(applicationId);
-  if (session && !session.page.isClosed()) {
-    await session.page.close().catch(() => undefined);
-  }
+  if (entry) await closeSession(entry.session);
 }

@@ -36,28 +36,28 @@ export const prepareApplicationRequestSchema = z
   .object({
     job: z.object({
       id: z.string(),
-      source: z.literal("linkedin"),
+      source: jobSourceSchema,
       title: z.string(),
       company: z.string().nullable(),
       location: z.string().nullable(),
       postedAt: z.string().nullable(),
       salary: z.string().nullable(),
-      url: z.url().refine(
-        (url) => {
-          const hostname = new URL(url).hostname;
-          return (
-            hostname === "linkedin.com" || hostname.endsWith(".linkedin.com")
-          );
-        },
-        { message: "只能辅助投递 LinkedIn 岗位" },
-      ),
+      url: z.url(),
       matchScore: z.number().int().min(0).max(100),
     }),
     resumeFileId: z.uuid("请先上传并保留 PDF 简历"),
     resumeFileName: z.string().min(1),
     resumeText: z.string().max(30_000),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ job }) => {
+      const hostname = new URL(job.url).hostname;
+      const domain = job.source === "boss" ? "zhipin.com" : "linkedin.com";
+      return hostname === domain || hostname.endsWith(`.${domain}`);
+    },
+    { message: "岗位链接与来源不匹配", path: ["job", "url"] },
+  );
 
 export const applicationActionRequestSchema = z
   .object({

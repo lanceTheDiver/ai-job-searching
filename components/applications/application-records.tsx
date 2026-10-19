@@ -128,7 +128,7 @@ export function ApplicationRecords() {
             <BriefcaseBusiness className="mx-auto size-6 text-[#172033]/25" />
             <p className="mt-3 text-sm font-semibold">还没有投递记录</p>
             <p className="mt-1 text-xs text-[#172033]/40">
-              从岗位搜索结果发起 Playwright 辅助投递后会显示在这里。
+              从岗位搜索结果发起 OpenCLI 辅助投递后会显示在这里。
             </p>
           </div>
         </div>
@@ -159,7 +159,7 @@ export function ApplicationRecords() {
                     </div>
                     <p className="mt-1 text-xs text-[#172033]/48">
                       {[
-                        "LinkedIn",
+                        record.source === "boss" ? "Boss 直聘" : "LinkedIn",
                         record.company,
                         record.location,
                         record.salary,

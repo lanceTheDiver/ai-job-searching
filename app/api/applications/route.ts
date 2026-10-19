@@ -4,7 +4,7 @@ import {
   listApplicationRecords,
   updateApplicationRecord,
 } from "@/lib/applications/application-storage";
-import { prepareLinkedInApplication } from "@/lib/linkedin/application-automation";
+import { prepareApplicationAutomation } from "@/lib/applications/application-automation";
 import { prepareApplicationRequestSchema } from "@/schemas/application";
 
 export const runtime = "nodejs";
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   const record = await createApplicationRecord(parsed.data);
   try {
-    const result = await prepareLinkedInApplication({
+    const result = await prepareApplicationAutomation(record.source, {
       applicationId: record.id,
       jobUrl: record.jobUrl,
       resumeFileId: record.resumeFileId,
@@ -56,11 +56,11 @@ export async function POST(request: Request) {
     });
     return Response.json({ data: updated });
   } catch (error) {
-    console.error("准备 LinkedIn 投递失败", error);
+    console.error("准备辅助投递失败", error);
     const message =
       error instanceof Error
-        ? `Playwright 无法准备投递：${error.message}`
-        : "Playwright 无法准备投递";
+        ? `辅助投递失败：${error.message}`
+        : "辅助投递失败";
     const updated = await updateApplicationRecord(record.id, {
       status: "failed",
       statusMessage: message,
