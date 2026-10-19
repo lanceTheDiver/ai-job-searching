@@ -1,5 +1,7 @@
 import "server-only";
 
+import { spawn } from "node:child_process";
+
 import { z } from "zod";
 
 const DEFAULT_OMNIROUTE_BASE_URL = "http://localhost:20128/v1";
@@ -66,14 +68,13 @@ async function parseResponse(response: Response): Promise<OmniRouteResponse> {
   }
 }
 
-export async function requestOmniRouteStructuredOutput<T>({
+async function requestOmniRouteJson<T>({
   schema,
   schemaName,
   instructions,
   input,
   operationName,
-  resultName,
-}: StructuredOutputRequest<T>): Promise<T> {
+}: StructuredOutputRequest<T>): Promise<unknown> {
   const apiKey = process.env.OMNIROUTE_API_KEY;
   if (!apiKey) {
     throw new OmniRouteError(
@@ -128,17 +129,91 @@ export async function requestOmniRouteStructuredOutput<T>({
     );
   }
 
-  let parsedJson: unknown;
   try {
-    parsedJson = JSON.parse(getOutputText(payload, operationName));
+    return JSON.parse(getOutputText(payload, operationName));
   } catch (error) {
     if (error instanceof OmniRouteError) throw error;
     throw new OmniRouteError("模型返回的内容不是有效 JSON", "INVALID_OUTPUT");
   }
+}
 
-  const validated = schema.safeParse(parsedJson);
+// 走本机 Claude Code 登录态（订阅额度），不需要 API Key。
+async function requestClaudeJson<T>({
+  schema,
+  instructions,
+  input,
+}: StructuredOutputRequest<T>): Promise<unknown> {
+  const args = [
+    "-p",
+    "--output-format",
+    "json",
+    "--json-schema",
+    JSON.stringify(
+      z.toJSONSchema(schema, { target: "draft-7", reused: "inline" }),
+    ),
+    "--tools",
+    "",
+    "--no-session-persistence",
+    "--setting-sources",
+    "",
+    "--system-prompt",
+    instructions,
+  ];
+  if (process.env.CLAUDE_MODEL) args.push("--model", process.env.CLAUDE_MODEL);
+
+  const stdout = await new Promise<string>((resolve, reject) => {
+    const child = spawn("claude", args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: 180_000,
+    });
+    let out = "";
+    child.stdout.on("data", (chunk) => (out += chunk));
+    child.on("error", () =>
+      reject(
+        new OmniRouteError(
+          "无法启动 claude 命令，请确认已安装 Claude Code 并完成登录",
+          "CONFIGURATION",
+        ),
+      ),
+    );
+    child.on("close", () => resolve(out));
+    child.stdin.end(input);
+  });
+
+  let result: {
+    is_error?: boolean;
+    result?: string;
+    structured_output?: unknown;
+  };
+  try {
+    result = JSON.parse(stdout);
+  } catch {
+    throw new OmniRouteError("Claude 没有返回可解析的响应", "PROVIDER");
+  }
+  if (result.is_error) {
+    throw new OmniRouteError(result.result ?? "Claude 调用失败", "PROVIDER");
+  }
+  if (result.structured_output === undefined) {
+    throw new OmniRouteError("Claude 没有返回结构化结果", "INVALID_OUTPUT");
+  }
+  return result.structured_output;
+}
+
+// LLM_PROVIDER=claude 使用 Claude 订阅，默认使用 OmniRoute。
+export async function requestOmniRouteStructuredOutput<T>(
+  request: StructuredOutputRequest<T>,
+): Promise<T> {
+  const json =
+    process.env.LLM_PROVIDER === "claude"
+      ? await requestClaudeJson(request)
+      : await requestOmniRouteJson(request);
+
+  const validated = request.schema.safeParse(json);
   if (!validated.success) {
-    throw new OmniRouteError(`${resultName}未通过 Zod 校验`, "INVALID_OUTPUT");
+    throw new OmniRouteError(
+      `${request.resultName}未通过 Zod 校验`,
+      "INVALID_OUTPUT",
+    );
   }
   return validated.data;
 }
