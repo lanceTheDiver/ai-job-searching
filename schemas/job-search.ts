@@ -81,6 +81,5 @@ export type JobSearchCriteriaRequest = z.infer<
 >;
 export type JobSearchCriteria = z.infer<typeof jobSearchCriteriaSchema>;
 export type JobMatch = z.infer<typeof linkedInJobMatchSchema>;
-export type LinkedInJobMatch = JobMatch;
 export type JobSearchNotice = z.infer<typeof jobSearchNoticeSchema>;
 export type JobRanking = z.infer<typeof jobRankingSchema>;
