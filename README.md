@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI 求职助手
 
-## Getting Started
+基于 Next.js 的本地求职工具：上传 PDF 简历，由 AI 推导搜索条件，搜索并排序 BOSS 直聘 / LinkedIn 岗位，分析岗位匹配度，并辅助 LinkedIn 投递与记录。
 
-First, run the development server:
+## 功能
+
+- **简历解析**：上传 PDF 简历，解析并保存原文件（`/` 首页）
+- **岗位搜索**：AI 推导可编辑的搜索条件，搜索 BOSS 直聘 / LinkedIn，AI 排序（`/job-search`）
+- **岗位分析**：对单个岗位做结构化匹配分析
+- **搜索历史**：本机持久化搜索记录（`/search-history`）
+- **投递辅助**：LinkedIn 辅助投递与投递记录（`/applications`）
+
+## 环境要求
+
+- Node.js 与 [pnpm](https://pnpm.io)（禁用 npm / yarn）
+- [OmniRoute](http://localhost:20128/v1)：本地 OpenAI 兼容网关，提供模型调用
+- Playwright 与本机 Chrome：LinkedIn 投递自动化
+- `@jackwener/opencli`：BOSS 直聘搜索
+
+## 快速开始
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+在 `.env.local` 中填入 `OMNIROUTE_API_KEY`，其余变量均可选，说明见 `.env.example`。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+打开 [http://localhost:3000](http://localhost:3000)。
 
-## Learn More
+## 常用命令
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm lint            # ESLint 检查
+pnpm format          # Prettier 格式化
+pnpm format:check    # Prettier 格式校验
+pnpm tsc --noEmit    # 类型检查
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 本地数据
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+简历、搜索历史、投递记录默认保存在项目下的 `.data/`（已被 Git 忽略），路径可用 `.env.example` 中的变量覆盖。
 
-## Deploy on Vercel
+## 开发规范
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+项目规范与 AI 助手配置见 [AGENTS.md](AGENTS.md)，规范文档位于 `.claude/docs/`。

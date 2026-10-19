@@ -22,19 +22,17 @@ pnpm dev
 pnpm lint
 ```
 
-- 检查代码风格问题
-- 自动修复可修复的问题
+- 检查代码风格问题（只检查，不自动修复）
 - 遵循 Next.js 和项目的 ESLint 配置
 
 ### 格式化代码（Prettier）
 
 ```bash
-pnpm format
+pnpm format         # 格式化全部文件
+pnpm format:check   # 只校验，不修改
 ```
 
-或使用 VS Code 的自动格式化功能（推荐）
-
-**重要**：每次创建新文件后必须格式化代码
+**重要**：每次创建新文件后必须运行 `pnpm format`
 
 ## 依赖管理
 
@@ -90,19 +88,19 @@ pnpm dev
 ### 提交代码前
 
 ```bash
-# 1. 运行 lint 检查
+# 1. 格式校验
+pnpm format:check
+
+# 2. lint 检查
 pnpm lint
 
-# 2. 运行类型检查（可选）
+# 3. 类型检查
 pnpm tsc --noEmit
-
-# 3. 格式化代码
-# 使用 VS Code 自动格式化或手动运行 Prettier
 ```
 
 ## 注意事项
 
 - ⚠️ 本项目使用 **pnpm**，不要使用 npm 或 yarn
 - ✅ 优先使用 `pnpm` 而非 `npm`
-- ✅ 提交代码前务必运行 `pnpm lint`
-- ✅ 创建新文件后记得格式化代码
+- ✅ 提交代码前务必运行 `pnpm format:check`、`pnpm lint` 和 `pnpm tsc --noEmit`
+- ✅ 创建新文件后运行 `pnpm format`

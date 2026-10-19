@@ -53,9 +53,10 @@ components/PostList.tsx        ← UI 组件使用 postService
 - 优先使用 Tailwind CSS 的实用类
 - 保持组件样式简洁
 - 遵循项目的设计系统
+- 图标统一使用项目已依赖的 `lucide-react`，不要混用其他图标库；此规则优先于 Skill 中对图标库的偏好
 
 ## 代码格式化
 
 - **每次创建文件后必须运行 Prettier 格式化**
 - 确保代码风格一致性
-- 使用项目配置的 Prettier 规则
+- 使用 `pnpm format`（项目未自定义 Prettier 配置，沿用默认规则）

@@ -25,9 +25,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## 项目结构
 
 - `app/` - Next.js App Router 页面和 API Routes
-- `components/` - React 组件
-- `lib/` - 工具函数和服务层
-- `lib/services/` - API 调用封装（禁止在组件中直接 fetch）
+- `components/` - React 组件（按 `jobs/`、`resumes/`、`applications/`、`layout/`、`ui/` 分组）
+- `schemas/` - Zod Schema 与共享类型
+- `stores/` - Zustand 全局状态
+- `lib/` - 工具函数和服务端逻辑，按领域分目录：`ai/`、`jobs/`、`resumes/`、`applications/`、`boss/`、`linkedin/`
+- `lib/services/` - 前端 API 调用封装（禁止在组件中直接 fetch）
 
 ## 项目级 Skill
 
